@@ -51,10 +51,10 @@ namespace Tests
         public async Task Add_ThrowsIfDuplicatedName()
         {
             // Arrange
-            repo.Setup(r => r.Categories.GetByNameAsync(It.IsAny<Guid>(), "John")).ReturnsAsync(new CategoryEntity());
+            repo.Setup(r => r.Categories.GetByNameAsync(It.IsAny<Guid>(), "School")).ReturnsAsync(new CategoryEntity());
             var categoryAddRequest = new CategoryAddRequest()
             {
-                Name = "John"
+                Name = "School"
             };
 
             // Assert
@@ -64,14 +64,14 @@ namespace Tests
                 await categoriesService.Add(Guid.NewGuid(), categoryAddRequest);
             });
 
-            repo.Verify(r => r.Categories.GetByNameAsync(It.IsAny<Guid>(), "John"), Times.Once);
+            repo.Verify(r => r.Categories.GetByNameAsync(It.IsAny<Guid>(), "School"), Times.Once);
             repo.VerifyNoOtherCalls();
         }
 
         [Theory]
-        [InlineData("Stan")]
-        [InlineData("Willy")]
-        [InlineData("Marta")]
+        [InlineData("Home")]
+        [InlineData("Garden")]
+        [InlineData("Work")]
         public async Task Add_AddsCategoryAndReturnsResponseIfValidName(string name)
         {
             // Arrange
@@ -254,9 +254,9 @@ namespace Tests
         }
 
         [Theory]
-        [InlineData("John")]
-        [InlineData("Harry")]
-        [InlineData("Ella")]
+        [InlineData("Home")]
+        [InlineData("Garden")]
+        [InlineData("Work")]
         public async Task GetById_ReturnsCategoryWithValidIdAndUserId(string name)
         {
             // Arrange
@@ -372,7 +372,7 @@ namespace Tests
             var categoryUpdateRequest = new CategoryUpdateRequest()
             {
                 Id = Guid.NewGuid(),
-                Name = "John",
+                Name = "School",
                 UserId = userId
             };
 
@@ -381,9 +381,9 @@ namespace Tests
                 UserId = userId
             });
 
-            repo.Setup(r => r.Categories.GetByNameAsync(userId, "John")).ReturnsAsync(new CategoryEntity()
+            repo.Setup(r => r.Categories.GetByNameAsync(userId, "School")).ReturnsAsync(new CategoryEntity()
             {
-                Name = "John",
+                Name = "School",
                 UserId = userId
             });
 
@@ -395,14 +395,14 @@ namespace Tests
             });
 
             repo.Verify(r => r.Categories.GetByIdAsync(It.IsAny<Guid>()), Times.Once);
-            repo.Verify(r => r.Categories.GetByNameAsync(userId, "John"), Times.Once);
+            repo.Verify(r => r.Categories.GetByNameAsync(userId, "School"), Times.Once);
             repo.VerifyNoOtherCalls();
         }
 
         [Theory]
-        [InlineData("Sarah")]
-        [InlineData("Jack")]
-        [InlineData("Michael")]
+        [InlineData("Home")]
+        [InlineData("Garden")]
+        [InlineData("Work")]
         public async Task Update_UpdatesWithValidData(string name)
         {
             // Arrange
@@ -418,7 +418,7 @@ namespace Tests
             repo.Setup(r => r.Categories.GetByIdAsync(It.IsAny<Guid>())).ReturnsAsync(new CategoryEntity()
             {
                 Id = id,
-                Name = "Polly",
+                Name = "School",
                 UserId = userId
             });
 

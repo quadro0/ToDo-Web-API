@@ -27,7 +27,15 @@ builder.Services.AddScoped<IUsersService, UsersService>();
 builder.Services.AddScoped<ICategoriesService, CategoriesService>();
 builder.Services.AddScoped<ITasksService, TasksService>();
 
+builder.Services.AddSwaggerGen();
+
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    _ = app.UseSwagger();
+    _ = app.UseSwaggerUI();
+}
 
 app.UseHttpsRedirection();
 

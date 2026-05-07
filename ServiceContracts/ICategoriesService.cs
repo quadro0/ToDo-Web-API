@@ -18,7 +18,7 @@ namespace ServiceContracts
         /// <param name="userId">Id of the current logged user</param>
         /// <param name="id">Id of the desired category</param>
         /// <returns>Returns category by provided Id</returns>
-        Task<CategoryResponse> GetById(Guid userId, Guid id);
+        Task<CategoryResponse?> GetById(Guid userId, Guid id);
 
         /// <summary>
         /// Retrieves all task categories of the current logged user

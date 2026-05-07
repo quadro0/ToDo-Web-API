@@ -2,6 +2,7 @@ using Data;
 using Data.Repositories;
 using Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 using ServiceContracts;
 using Services;
 
@@ -28,6 +29,15 @@ builder.Services.AddScoped<ICategoriesService, CategoriesService>();
 builder.Services.AddScoped<ITasksService, TasksService>();
 
 builder.Services.AddSwaggerGen();
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Debug()
+    .WriteTo.Console()
+    .WriteTo.File("Logs/log.txt", rollingInterval: RollingInterval.Day)
+    .Enrich.FromLogContext()
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 var app = builder.Build();
 

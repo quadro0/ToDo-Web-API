@@ -4,17 +4,15 @@ namespace ServiceContracts.DTO
 {
     public class TaskAddRequest
     {
-        [Required]
-        [MaxLength(20)]
+        [Required(ErrorMessage = "Task name is required.")]
+        [StringLength(20, MinimumLength = 3, ErrorMessage = "Name must be between 3 and 20 characters.")]
         public string? Name { get; set; }
-        [Required]
-        [MaxLength(100)]
+
+        [Required(ErrorMessage = "Task description is required.")]
+        [StringLength(100, MinimumLength = 10, ErrorMessage = "Description must be between 10 and 100 characters.")]
         public string? Description { get; set; }
-        [Required]
-        public bool IsCompleted { get; set; }
-        [Required]
-        public DateTime DateCreated { get; set; }
-        public Guid UserId { get; set; }
+
+        [Required(ErrorMessage = "Task category is required.")]
         public Guid CategoryId { get; set; }
     }
 }

@@ -7,52 +7,52 @@ using ToDoApp.Extensions;
 namespace ToDoApp.Controllers
 {
     [ApiController]
-    [Route("api/categories")]
+    [Route("api/tasks")]
     [Authorize]
-    public class CategoriesController(ICategoriesService categoriesService) : ControllerBase
+    public class TasksController(ITasksService tasksService) : ControllerBase
     {
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<CategoryResponse>>> GetAll()
+        public async Task<ActionResult<TasksPaginatedResponse>> GetAll([FromQuery] TasksPaginationParameters parameters)
         {
             var userId = User.GetUserId();
 
-            var categories = await categoriesService.GetAllAsync(userId);
+            var result = await tasksService.GetPaginatedAsync(userId, parameters);
 
-            return Ok(categories);
+            return Ok(result);
         }
 
         [HttpPost]
-        public async Task<ActionResult<CategoryResponse>> Create(CategoryAddRequest request)
+        public async Task<ActionResult<TaskResponse>> Create(TaskAddRequest request)
         {
             var userId = User.GetUserId();
 
-            var result = await categoriesService.AddAsync(userId, request);
+            var result = await tasksService.AddAsync(userId, request);
 
             return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<CategoryResponse>> GetById(Guid id)
+        public async Task<ActionResult<TaskResponse>> GetById(Guid id)
         {
             var userId = User.GetUserId();
 
-            var result = await categoriesService.GetByIdAsync(userId, id);
+            var result = await tasksService.GetByIdAsync(userId, id);
 
             return Ok(result);
         }
 
         [HttpDelete("{id}")]
-        public async Task<ActionResult> DeleteById(Guid id)
+        public async Task<ActionResult> Delete(Guid id)
         {
             var userId = User.GetUserId();
 
-            await categoriesService.DeleteAsync(userId, id);
+            await tasksService.DeleteAsync(userId, id);
 
             return NoContent();
         }
 
         [HttpPut("{id}")]
-        public async Task<ActionResult<CategoryResponse>> Update(Guid id, CategoryUpdateRequest request)
+        public async Task<ActionResult<TaskResponse>> Update(Guid id, TaskUpdateRequest request)
         {
             if (id != request.Id)
             {
@@ -61,9 +61,9 @@ namespace ToDoApp.Controllers
 
             var userId = User.GetUserId();
 
-            var result = await categoriesService.UpdateAsync(userId, request);
+            var result = await tasksService.UpdateAsync(userId, request);
 
             return Ok(result);
         }
-    } 
+    }
 }

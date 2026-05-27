@@ -1,0 +1,17 @@
+﻿using Microsoft.AspNetCore.Diagnostics;
+
+namespace ToDoApp.Handlers
+{
+    public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
+    {
+        public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
+        {
+            logger.LogError(exception, "Exception occurred: {Message}", exception.Message);
+
+            httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await httpContext.Response.WriteAsJsonAsync(new { Error = "An unexpected error occurred." }, cancellationToken);
+
+            return true;
+        }
+    }
+}

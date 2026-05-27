@@ -1,28 +1,33 @@
 using Data;
-using Data.Repositories;
-using Data.Repositories.Interfaces;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using ServiceContracts;
 using Services;
+using Services.Options;
+using System.Text;
+using ToDoApp.Filters;
+using ToDoApp.Handlers;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add<ValidateModelStateActionFilter>();
+});
 
 builder.Services.AddDbContext<TodoDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnectionString")));
-
-builder.Services.AddScoped<IUsersRepository, UsersRepository>();
-builder.Services.AddScoped<ICategoriesRepository, CategoriesRepository>();
-builder.Services.AddScoped<ITasksRepository, TasksRepository>();
-
-builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 builder.Services.AddAutoMapper(cfg =>
 {
     cfg.AddProfile<AutomapperProfile>();
 });
+
+builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("JwtOptions"));
 
 builder.Services.AddScoped<IUsersService, UsersService>();
 builder.Services.AddScoped<ICategoriesService, CategoriesService>();
@@ -30,8 +35,27 @@ builder.Services.AddScoped<ITasksService, TasksService>();
 
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        var secretKey = builder.Configuration["JwtOptions:SecretKey"];
+
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey!)),
+
+            ValidateIssuer = false,
+            ValidateAudience = false,
+
+            ValidateLifetime = true
+        };
+    });
+
+builder.Services.AddAuthorization();
+
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
+    .MinimumLevel.Information()
     .WriteTo.Console()
     .WriteTo.File("Logs/log.txt", rollingInterval: RollingInterval.Day)
     .Enrich.FromLogContext()
@@ -43,11 +67,15 @@ var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    _ = app.UseSwagger();
-    _ = app.UseSwaggerUI();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
+app.UseHsts();
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 

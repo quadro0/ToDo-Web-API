@@ -4,13 +4,12 @@ namespace ServiceContracts.DTO
 {
     public class UserUpdateRequest
     {
-        public Guid Id { get; set; }
-        [Required]
-        [MaxLength(50)]
-        public string? Email { get; set; }
-        [Required]
-        [MinLength(5)]
-        [MaxLength(50)]
-        public string? Password { get; set; }
+        [Required(ErrorMessage = "Password is required.")]
+        [StringLength(50, MinimumLength = 5, ErrorMessage = "Password must be between 5 and 50 characters.")]
+        public string? CurrentPassword { get; set; }
+
+        [Required(ErrorMessage = "New password is required.")]
+        [StringLength(50, MinimumLength = 5, ErrorMessage = "New password must be between 5 and 50 characters.")]
+        public string? NewPassword { get; set; }
     }
 }

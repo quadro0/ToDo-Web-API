@@ -8,17 +8,22 @@ namespace Data.Entities
         [Required]
         [MaxLength(20)]
         public string? Name { get; set; }
+
         [Required]
         [MaxLength(100)]
         public string? Description { get; set; }
+        public bool IsCompleted { get; set; } = false;
+        public DateTime DateCreated { get; set; } = DateTime.UtcNow;
+
         [Required]
-        public bool IsCompleted { get; set; }
-        [Required]
-        public DateTime DateCreated { get; set; }
         public Guid UserId { get; set; }
+
+        [Required]
         public Guid CategoryId { get; set; }
+
         [ForeignKey(nameof(UserId))]
         public UserEntity? User { get; set; }
+
         [ForeignKey(nameof(CategoryId))]
         public CategoryEntity? Category { get; set; }
     }

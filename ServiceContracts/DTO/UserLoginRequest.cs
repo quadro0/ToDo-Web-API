@@ -2,7 +2,7 @@
 
 namespace ServiceContracts.DTO
 {
-    public class UserAddRequest
+    public class UserLoginRequest
     {
         [Required(ErrorMessage = "Email is required.")]
         [EmailAddress(ErrorMessage = "Email has to be valid.")]

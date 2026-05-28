@@ -1,23 +1,18 @@
 ﻿using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.Extensions.Options;
+using Services.Options;
 
 namespace ToDoApp.Handlers
 {
-    public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
+    public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IOptions<ExceptionOptions> exceptionOptions) : IExceptionHandler
     {
-        private readonly Dictionary<Type, int> _exceptionHandlers = new()
-        {
-            { typeof(KeyNotFoundException), StatusCodes.Status404NotFound },
-            { typeof(ArgumentException), StatusCodes.Status400BadRequest },
-            { typeof(UnauthorizedAccessException), StatusCodes.Status401Unauthorized }
-        };
-
         public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
         {
             logger.LogError(exception, "Exception occurred: {Message}", exception.Message);
 
             var exceptionType = exception.GetType();
 
-            if (_exceptionHandlers.TryGetValue(exceptionType, out var handler))
+            if (exceptionOptions.Value.ExceptionHandlers.TryGetValue(exceptionType, out var handler))
             {
                 httpContext.Response.StatusCode = handler;
                 await httpContext.Response.WriteAsJsonAsync(new { Error = exception.Message }, cancellationToken);

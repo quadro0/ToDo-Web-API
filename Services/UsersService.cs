@@ -3,19 +3,12 @@ using Data;
 using Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using ServiceContracts;
 using ServiceContracts.DTO;
-using Services.Helpers;
-using Services.Options;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 
 namespace Services
 {
-    public class UsersService(TodoDbContext context, IMapper mapper, ILogger<UsersService> logger, IOptions<JwtOptions> jwtOptions) : IUsersService
+    public class UsersService(TodoDbContext context, IMapper mapper, ILogger<UsersService> logger, IPasswordService passwordService, ITokensService tokensService) : IUsersService
     {
         public async Task RegisterAsync(UserAddRequest userAddRequest)
         {
@@ -27,7 +20,7 @@ namespace Services
 
             var user = mapper.Map<UserEntity>(userAddRequest);
             user.Id = Guid.NewGuid();
-            user.PasswordHash = PasswordHashHelper.Generate(userAddRequest.Password!);
+            user.PasswordHash = passwordService.Generate(userAddRequest.Password!);
 
             context.Users.Add(user);
 
@@ -44,13 +37,13 @@ namespace Services
                 throw new UnauthorizedAccessException("User with given email doesn't exist.");
             }
 
-            if (!PasswordHashHelper.Verify(userLoginRequest.Password!, user.PasswordHash!))
+            if (!passwordService.Verify(userLoginRequest.Password!, user.PasswordHash!))
             {
                 logger.LogWarning("Invalid password provided.");
                 throw new UnauthorizedAccessException("Invalid password.");
             }
 
-            return GenerateToken(user.Id);
+            return tokensService.GenerateToken(user.Id);
         }
 
         public async Task UpdatePasswordAsync(Guid userId, UserUpdateRequest userUpdateRequest)
@@ -69,30 +62,15 @@ namespace Services
                 throw new KeyNotFoundException("User with given id doesn't exist.");
             }
 
-            if (!PasswordHashHelper.Verify(userUpdateRequest.CurrentPassword!, user.PasswordHash!))
+            if (!passwordService.Verify(userUpdateRequest.CurrentPassword!, user.PasswordHash!))
             {
                 logger.LogWarning("Invalid password provided.");
                 throw new UnauthorizedAccessException("Invalid password.");
             }
 
-            user.PasswordHash = PasswordHashHelper.Generate(userUpdateRequest.NewPassword!);
+            user.PasswordHash = passwordService.Generate(userUpdateRequest.NewPassword!);
 
             await context.SaveChangesAsync();
-        }
-
-        private string GenerateToken(Guid userId)
-        {
-            var options = jwtOptions.Value;
-
-            SymmetricSecurityKey key = new(Encoding.UTF8.GetBytes(options.SecretKey!));
-
-            var jwtToken = new JwtSecurityToken(
-                signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256),
-                claims: [new Claim(ClaimTypes.NameIdentifier, userId.ToString())],
-                expires: DateTime.UtcNow.AddHours(options.ExpiresInHours)
-                );
-
-            return new JwtSecurityTokenHandler().WriteToken(jwtToken);
         }
     }
 }

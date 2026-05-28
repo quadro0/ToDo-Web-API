@@ -326,6 +326,17 @@ namespace ServiceContracts
     }
 }
 
+=== FILE: D:\Education\C#NET\ToDo\ServiceContracts\IPasswordService.cs ===
+namespace ServiceContracts
+{
+    public interface IPasswordService
+    {
+        public string Generate(string password);
+
+        public bool Verify(string password, string storedHash);
+    }
+}
+
 === FILE: D:\Education\C#NET\ToDo\ServiceContracts\ITasksService.cs ===
 using ServiceContracts.DTO;
 
@@ -374,6 +385,20 @@ namespace ServiceContracts
     }
 }
 
+=== FILE: D:\Education\C#NET\ToDo\ServiceContracts\ITokensService.cs ===
+namespace ServiceContracts
+{
+    public interface ITokensService
+    {
+        /// <summary>
+        /// Generates JWT token
+        /// </summary>
+        /// <param name="userId">UserId to be included in token</param>
+        /// <returns>Returns generated JWT token as a string</returns>
+        string GenerateToken(Guid userId);
+    }
+}
+
 === FILE: D:\Education\C#NET\ToDo\ServiceContracts\IUsersService.cs ===
 using ServiceContracts.DTO;
 
@@ -405,20 +430,19 @@ namespace ServiceContracts
     }
 }
 
-=== FILE: D:\Education\C#NET\ToDo\Services\Helpers\PasswordHashHelper.cs ===
-namespace Services.Helpers
-{
-    public static class PasswordHashHelper
-    {
-        public static string Generate(string password) 
-        {
-            return BCrypt.Net.BCrypt.EnhancedHashPassword(password);
-        }
+=== FILE: D:\Education\C#NET\ToDo\Services\Options\ExceptionOptions.cs ===
+using Microsoft.AspNetCore.Http;
 
-        public static bool Verify(string password, string storedHash)
+namespace Services.Options
+{
+    public class ExceptionOptions
+    {
+        public Dictionary<Type, int> ExceptionHandlers { get; set; } = new()
         {
-            return BCrypt.Net.BCrypt.EnhancedVerify(password, storedHash);
-        }
+            { typeof(KeyNotFoundException), StatusCodes.Status404NotFound },
+            { typeof(ArgumentException), StatusCodes.Status400BadRequest },
+            { typeof(UnauthorizedAccessException), StatusCodes.Status401Unauthorized }
+        };
     }
 }
 
@@ -551,6 +575,25 @@ namespace Services
     }
 }
 
+=== FILE: D:\Education\C#NET\ToDo\Services\PasswordService.cs ===
+using ServiceContracts;
+
+namespace Services
+{
+    public class PasswordService : IPasswordService
+    {
+        public string Generate(string password)
+        {
+            return BCrypt.Net.BCrypt.EnhancedHashPassword(password);
+        }
+
+        public bool Verify(string password, string storedHash)
+        {
+            return BCrypt.Net.BCrypt.EnhancedVerify(password, storedHash);
+        }
+    }
+}
+
 === FILE: D:\Education\C#NET\ToDo\Services\TasksService.cs ===
 using AutoMapper;
 using AutoMapper.QueryableExtensions;
@@ -650,17 +693,10 @@ namespace Services
     }
 }
 
-=== FILE: D:\Education\C#NET\ToDo\Services\UsersService.cs ===
-using AutoMapper;
-using Data;
-using Data.Entities;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
+=== FILE: D:\Education\C#NET\ToDo\Services\TokensService.cs ===
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using ServiceContracts;
-using ServiceContracts.DTO;
-using Services.Helpers;
 using Services.Options;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -668,7 +704,37 @@ using System.Text;
 
 namespace Services
 {
-    public class UsersService(TodoDbContext context, IMapper mapper, ILogger<UsersService> logger, IOptions<JwtOptions> jwtOptions) : IUsersService
+    public class TokensService(IOptions<JwtOptions> jwtOptions) : ITokensService
+    {
+        public string GenerateToken(Guid userId)
+        {
+            var options = jwtOptions.Value;
+
+            SymmetricSecurityKey key = new(Encoding.UTF8.GetBytes(options.SecretKey!));
+
+            var jwtToken = new JwtSecurityToken(
+                signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256),
+                claims: [new Claim(ClaimTypes.NameIdentifier, userId.ToString())],
+                expires: DateTime.UtcNow.AddHours(options.ExpiresInHours)
+                );
+
+            return new JwtSecurityTokenHandler().WriteToken(jwtToken);
+        }
+    }
+}
+
+=== FILE: D:\Education\C#NET\ToDo\Services\UsersService.cs ===
+using AutoMapper;
+using Data;
+using Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using ServiceContracts;
+using ServiceContracts.DTO;
+
+namespace Services
+{
+    public class UsersService(TodoDbContext context, IMapper mapper, ILogger<UsersService> logger, IPasswordService passwordService, ITokensService tokensService) : IUsersService
     {
         public async Task RegisterAsync(UserAddRequest userAddRequest)
         {
@@ -680,7 +746,7 @@ namespace Services
 
             var user = mapper.Map<UserEntity>(userAddRequest);
             user.Id = Guid.NewGuid();
-            user.PasswordHash = PasswordHashHelper.Generate(userAddRequest.Password!);
+            user.PasswordHash = passwordService.Generate(userAddRequest.Password!);
 
             context.Users.Add(user);
 
@@ -697,13 +763,13 @@ namespace Services
                 throw new UnauthorizedAccessException("User with given email doesn't exist.");
             }
 
-            if (!PasswordHashHelper.Verify(userLoginRequest.Password!, user.PasswordHash!))
+            if (!passwordService.Verify(userLoginRequest.Password!, user.PasswordHash!))
             {
                 logger.LogWarning("Invalid password provided.");
                 throw new UnauthorizedAccessException("Invalid password.");
             }
 
-            return GenerateToken(user.Id);
+            return tokensService.GenerateToken(user.Id);
         }
 
         public async Task UpdatePasswordAsync(Guid userId, UserUpdateRequest userUpdateRequest)
@@ -722,30 +788,15 @@ namespace Services
                 throw new KeyNotFoundException("User with given id doesn't exist.");
             }
 
-            if (!PasswordHashHelper.Verify(userUpdateRequest.CurrentPassword!, user.PasswordHash!))
+            if (!passwordService.Verify(userUpdateRequest.CurrentPassword!, user.PasswordHash!))
             {
                 logger.LogWarning("Invalid password provided.");
                 throw new UnauthorizedAccessException("Invalid password.");
             }
 
-            user.PasswordHash = PasswordHashHelper.Generate(userUpdateRequest.NewPassword!);
+            user.PasswordHash = passwordService.Generate(userUpdateRequest.NewPassword!);
 
             await context.SaveChangesAsync();
-        }
-
-        private string GenerateToken(Guid userId)
-        {
-            var options = jwtOptions.Value;
-
-            SymmetricSecurityKey key = new(Encoding.UTF8.GetBytes(options.SecretKey!));
-
-            var jwtToken = new JwtSecurityToken(
-                signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256),
-                claims: [new Claim(ClaimTypes.NameIdentifier, userId.ToString())],
-                expires: DateTime.UtcNow.AddHours(options.ExpiresInHours)
-                );
-
-            return new JwtSecurityTokenHandler().WriteToken(jwtToken);
         }
     }
 }
@@ -958,7 +1009,6 @@ namespace ToDoApp.Extensions
 }
 
 === FILE: D:\Education\C#NET\ToDo\ToDoApp\Filters\ValidateModelStateActionFilter.cs ===
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
@@ -990,25 +1040,20 @@ namespace ToDoApp.Filters
 
 === FILE: D:\Education\C#NET\ToDo\ToDoApp\Handlers\GlobalExceptionHandler.cs ===
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.Extensions.Options;
+using Services.Options;
 
 namespace ToDoApp.Handlers
 {
-    public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
+    public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IOptions<ExceptionOptions> exceptionOptions) : IExceptionHandler
     {
-        private readonly Dictionary<Type, int> _exceptionHandlers = new()
-        {
-            { typeof(KeyNotFoundException), StatusCodes.Status404NotFound },
-            { typeof(ArgumentException), StatusCodes.Status400BadRequest },
-            { typeof(UnauthorizedAccessException), StatusCodes.Status401Unauthorized }
-        };
-
         public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
         {
             logger.LogError(exception, "Exception occurred: {Message}", exception.Message);
 
             var exceptionType = exception.GetType();
 
-            if (_exceptionHandlers.TryGetValue(exceptionType, out var handler))
+            if (exceptionOptions.Value.ExceptionHandlers.TryGetValue(exceptionType, out var handler))
             {
                 httpContext.Response.StatusCode = handler;
                 await httpContext.Response.WriteAsJsonAsync(new { Error = exception.Message }, cancellationToken);
@@ -1040,6 +1085,8 @@ using ToDoApp.Handlers;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.Configure<ExceptionOptions>(opt => { });
+
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 builder.Services.AddControllers(options =>
@@ -1062,6 +1109,7 @@ builder.Services.AddAutoMapper(cfg =>
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("JwtOptions"));
 
+builder.Services.AddScoped<ITokensService, TokensService>();
 builder.Services.AddScoped<IUsersService, UsersService>();
 builder.Services.AddScoped<ICategoriesService, CategoriesService>();
 builder.Services.AddScoped<ITasksService, TasksService>();

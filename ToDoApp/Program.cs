@@ -13,6 +13,8 @@ using ToDoApp.Handlers;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.Configure<ExceptionOptions>(opt => { });
+
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 builder.Services.AddControllers(options =>
@@ -35,6 +37,7 @@ builder.Services.AddAutoMapper(cfg =>
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("JwtOptions"));
 
+builder.Services.AddScoped<ITokensService, TokensService>();
 builder.Services.AddScoped<IUsersService, UsersService>();
 builder.Services.AddScoped<ICategoriesService, CategoriesService>();
 builder.Services.AddScoped<ITasksService, TasksService>();

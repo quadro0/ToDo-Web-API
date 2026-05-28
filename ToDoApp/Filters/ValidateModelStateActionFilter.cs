@@ -15,25 +15,15 @@ namespace ToDoApp.Filters
                     logger.LogWarning("Validating error: {Error}", error);
                 }
 
-                context.Result = new BadRequestObjectResult(context.ModelState);
-                return; 
-            }
-
-            var executedContext = await next();
-
-            if (executedContext.Exception != null)
-            {
-                executedContext.Result = executedContext.Exception switch
+                context.Result = new BadRequestObjectResult(new
                 {
-                    KeyNotFoundException => new NotFoundObjectResult(executedContext.Exception.Message),
-                    ArgumentException => new BadRequestObjectResult(executedContext.Exception.Message),
-                    UnauthorizedAccessException => new UnauthorizedObjectResult(executedContext.Exception.Message),
+                    Error = context.ModelState.Values.SelectMany(value => value.Errors).Select(error => error.ErrorMessage).ToList()
+                });
 
-                    _ => new ObjectResult(executedContext.Exception.Message) { StatusCode = 500 }
-                };
-
-                executedContext.ExceptionHandled = true;
+                return;
             }
+
+            await next();
         }
     }
 }

@@ -958,6 +958,7 @@ namespace ToDoApp.Extensions
 }
 
 === FILE: D:\Education\C#NET\ToDo\ToDoApp\Filters\ValidateModelStateActionFilter.cs ===
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
@@ -974,8 +975,12 @@ namespace ToDoApp.Filters
                     logger.LogWarning("Validating error: {Error}", error);
                 }
 
-                context.Result = new BadRequestObjectResult(context.ModelState);
-                return; 
+                context.Result = new BadRequestObjectResult(new
+                {
+                    Error = context.ModelState.Values.SelectMany(value => value.Errors).Select(error => error.ErrorMessage).ToList()
+                });
+
+                return;
             }
 
             await next();
@@ -990,20 +995,29 @@ namespace ToDoApp.Handlers
 {
     public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
     {
+        private readonly Dictionary<Type, int> _exceptionHandlers = new()
+        {
+            { typeof(KeyNotFoundException), StatusCodes.Status404NotFound },
+            { typeof(ArgumentException), StatusCodes.Status400BadRequest },
+            { typeof(UnauthorizedAccessException), StatusCodes.Status401Unauthorized }
+        };
+
         public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
         {
             logger.LogError(exception, "Exception occurred: {Message}", exception.Message);
 
-            var (statusCode, message) = exception switch
-            {
-                KeyNotFoundException => (StatusCodes.Status404NotFound, exception.Message),
-                ArgumentException => (StatusCodes.Status400BadRequest, exception.Message),
-                UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, exception.Message),
-                _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred.")
-            };
+            var exceptionType = exception.GetType();
 
-            httpContext.Response.StatusCode = statusCode;
-            await httpContext.Response.WriteAsJsonAsync(new { Error = message }, cancellationToken);
+            if (_exceptionHandlers.TryGetValue(exceptionType, out var handler))
+            {
+                httpContext.Response.StatusCode = handler;
+                await httpContext.Response.WriteAsJsonAsync(new { Error = exception.Message }, cancellationToken);
+            }
+            else
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                await httpContext.Response.WriteAsJsonAsync(new { Error = "An unexpected error occurred." }, cancellationToken);
+            }
 
             return true;
         }
@@ -1013,6 +1027,7 @@ namespace ToDoApp.Handlers
 === FILE: D:\Education\C#NET\ToDo\ToDoApp\Program.cs ===
 using Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
@@ -1030,6 +1045,11 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddControllers(options =>
 {
     options.Filters.Add<ValidateModelStateActionFilter>();
+});
+
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.SuppressModelStateInvalidFilter = true;
 });
 
 builder.Services.AddDbContext<TodoDbContext>(options =>
@@ -1078,12 +1098,15 @@ builder.Host.UseSerilog();
 
 var app = builder.Build();
 
+app.UseExceptionHandler(opt => { });
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
+app.UseHsts();
 app.UseHttpsRedirection();
 
 app.UseAuthentication();

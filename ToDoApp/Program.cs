@@ -1,5 +1,6 @@
 using Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
@@ -17,6 +18,11 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddControllers(options =>
 {
     options.Filters.Add<ValidateModelStateActionFilter>();
+});
+
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.SuppressModelStateInvalidFilter = true;
 });
 
 builder.Services.AddDbContext<TodoDbContext>(options =>
@@ -64,6 +70,8 @@ Log.Logger = new LoggerConfiguration()
 builder.Host.UseSerilog();
 
 var app = builder.Build();
+
+app.UseExceptionHandler(opt => { });
 
 if (app.Environment.IsDevelopment())
 {

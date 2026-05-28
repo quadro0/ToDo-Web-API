@@ -8,6 +8,8 @@ namespace ToDoApp.Controllers
 {
     [ApiController]
     [Route("api/users")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public class UsersController(IUsersService usersService) : ControllerBase
     {
         [HttpPost("register")]
@@ -21,6 +23,8 @@ namespace ToDoApp.Controllers
 
         [HttpPost("login")]
         [AllowAnonymous]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult> Login(UserLoginRequest request)
         {
             var token = await usersService.LoginAsync(request);
@@ -30,6 +34,7 @@ namespace ToDoApp.Controllers
 
         [HttpPut("change-password")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult> ChangePassword(UserUpdateRequest resuest)
         {
             var userId = User.GetUserId();

@@ -20,6 +20,8 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddControllers(options =>
 {
     options.Filters.Add<ValidateModelStateActionFilter>();
+    options.Filters.Add(new ProducesAttribute("application/json"));
+    options.Filters.Add(new ConsumesAttribute("application/json"));
 });
 
 builder.Services.Configure<ApiBehaviorOptions>(options =>

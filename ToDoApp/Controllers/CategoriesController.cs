@@ -9,9 +9,11 @@ namespace ToDoApp.Controllers
     [ApiController]
     [Route("api/categories")]
     [Authorize]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public class CategoriesController(ICategoriesService categoriesService) : ControllerBase
     {
         [HttpGet]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<CategoryResponse>>> GetAll()
         {
             var userId = User.GetUserId();
@@ -22,6 +24,8 @@ namespace ToDoApp.Controllers
         }
 
         [HttpPost]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<CategoryResponse>> Create(CategoryAddRequest request)
         {
             var userId = User.GetUserId();
@@ -32,6 +36,8 @@ namespace ToDoApp.Controllers
         }
 
         [HttpGet("{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<CategoryResponse>> GetById(Guid id)
         {
             var userId = User.GetUserId();
@@ -42,6 +48,8 @@ namespace ToDoApp.Controllers
         }
 
         [HttpDelete("{id}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult> DeleteById(Guid id)
         {
             var userId = User.GetUserId();
@@ -52,6 +60,9 @@ namespace ToDoApp.Controllers
         }
 
         [HttpPut("{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<CategoryResponse>> Update(Guid id, CategoryUpdateRequest request)
         {
             if (id != request.Id)

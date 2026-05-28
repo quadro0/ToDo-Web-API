@@ -37,6 +37,7 @@ builder.Services.AddAutoMapper(cfg =>
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("JwtOptions"));
 
+builder.Services.AddScoped<IPasswordService, PasswordService>();
 builder.Services.AddScoped<ITokensService, TokensService>();
 builder.Services.AddScoped<IUsersService, UsersService>();
 builder.Services.AddScoped<ICategoriesService, CategoriesService>();

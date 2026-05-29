@@ -77,6 +77,11 @@ builder.Host.UseSerilog();
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    await DataSeeder.SeedAsync(scope.ServiceProvider);
+}
+
 app.UseExceptionHandler(opt => { });
 
 if (app.Environment.IsDevelopment())

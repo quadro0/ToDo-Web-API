@@ -8,7 +8,6 @@ A RESTful API for managing tasks and categories, built on ASP.NET Core. The proj
     * User registration and login.
     * Generation of JWT tokens for accessing protected endpoints.
     * Password hashing using the BCrypt algorithm.
-    * Swagger UI integration for seamless JWT testing.
 * **Category Management:**
     * Create, read, update, and delete (CRUD) operations for task categories.
     * Binding categories to a specific user (data isolation).
@@ -86,11 +85,10 @@ All protected endpoints require the header: `Authorization: Bearer <token>`.
    ```
 
 3. **Run the application:**
-   The application uses `DataSeeder` to automatically apply migrations and populate the database with a test user and dummy tasks on the first run.
    ```bash
    dotnet run
    ```
-   *Note: Swagger UI is available at `https://localhost:<port>/swagger` in the development environment. It is pre-configured with a "Authorize" button to easily attach your JWT token to requests.*
+   *Note: Swagger UI is available at `https://localhost:<port>/swagger` in the development environment.*
 
 4. **Run Unit Tests:**
    To execute the test suite and verify business logic:

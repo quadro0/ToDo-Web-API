@@ -797,6 +797,1253 @@ namespace Services
     }
 }
 
+=== FILE: D:\Education\C#NET\ToDo\Tests\CategoriesServiceTests.cs ===
+using AutoMapper;
+using Data;
+using Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Moq;
+using ServiceContracts.DTO;
+using Services;
+
+namespace Tests
+{
+    public sealed class CategoriesServiceTests : IDisposable
+    {
+        private readonly TodoDbContext context;
+        private readonly Mock<ILogger<CategoriesService>> logger;
+        private readonly IMapper mapper;
+        private readonly CategoriesService categoriesService;
+
+        public CategoriesServiceTests()
+        {
+            var options = new DbContextOptionsBuilder<TodoDbContext>()
+                .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+                .Options;
+
+            context = new TodoDbContext(options);
+            logger = new Mock<ILogger<CategoriesService>>();
+
+            var config = new MapperConfiguration(cfg => cfg.AddProfile<AutomapperProfile>(), new LoggerFactory());
+            mapper = config.CreateMapper();
+
+            categoriesService = new CategoriesService(context, mapper, logger.Object);
+        }
+
+        public void Dispose()
+        {
+            context.Database.EnsureDeleted();
+            context.Dispose();
+            GC.SuppressFinalize(this);
+        }
+
+        #region AddAsync
+        [Fact]
+        public async Task AddAsync_ThrowsIfCategoryNameAlreadyExists()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var existingCategory = new CategoryEntity()
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Name = "Work"
+            };
+            context.Categories.Add(existingCategory);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var categoryAddRequest = new CategoryAddRequest()
+            {
+                Name = "Work"
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
+            {
+                // Action
+                await categoriesService.AddAsync(userId, categoryAddRequest);
+            });
+        }
+
+        [Theory]
+        [InlineData("Work")]
+        [InlineData("Personal")]
+        [InlineData("Health and Sport")]
+        public async Task AddAsync_AddsCategoryAndReturnsResponseIfValidData(string name)
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var categoryAddRequest = new CategoryAddRequest()
+            {
+                Name = name
+            };
+
+            // Action
+            var categoryResponse = await categoriesService.AddAsync(userId, categoryAddRequest);
+
+            // Assert
+            Assert.NotNull(categoryResponse);
+            Assert.Equal(name, categoryResponse.Name);
+            Assert.NotEqual(Guid.Empty, categoryResponse.Id);
+
+            var dbCategory = await context.Categories.FindAsync([categoryResponse.Id], TestContext.Current.CancellationToken);
+            Assert.NotNull(dbCategory);
+            Assert.Equal(name, dbCategory.Name);
+            Assert.Equal(userId, dbCategory.UserId);
+        }
+        #endregion
+
+        #region DeleteAsync
+        [Fact]
+        public async Task DeleteAsync_ThrowsIfInvalidCategoryId()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var invalidCategoryId = Guid.NewGuid();
+
+            // Assert
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            {
+                // Action
+                await categoriesService.DeleteAsync(userId, invalidCategoryId);
+            });
+        }
+
+        [Fact]
+        public async Task DeleteAsync_ThrowsIfCategoryBelongsToAnotherUser()
+        {
+            // Arrange
+            var authorizedUserId = Guid.NewGuid();
+            var wrongUserId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+
+            var category = new CategoryEntity() { Id = categoryId, UserId = wrongUserId, Name = "Private Tasks" };
+            context.Categories.Add(category);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            // Assert
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            {
+                // Action
+                await categoriesService.DeleteAsync(authorizedUserId, categoryId);
+            });
+        }
+
+        [Fact]
+        public async Task DeleteAsync_DeletesWithValidId()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+            var category = new CategoryEntity() { Id = categoryId, UserId = userId, Name = "To Delete" };
+
+            context.Categories.Add(category);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            // Action
+            await categoriesService.DeleteAsync(userId, categoryId);
+
+            // Assert
+            var dbCategory = await context.Categories.FindAsync([categoryId], TestContext.Current.CancellationToken);
+            Assert.Null(dbCategory);
+        }
+        #endregion
+
+        #region GetAllAsync
+        [Fact]
+        public async Task GetAllAsync_ReturnsListOfCategories_IfCategoriesExist()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var anotherUserId = Guid.NewGuid();
+
+            var categories = new List<CategoryEntity>()
+            {
+                new() { Id = Guid.NewGuid(), UserId = userId, Name = "Work" },
+                new() { Id = Guid.NewGuid(), UserId = userId, Name = "Personal" },
+                new() { Id = Guid.NewGuid(), UserId = anotherUserId, Name = "Stranger Things" }
+            };
+
+            context.Categories.AddRange(categories);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            // Action
+            var result = await categoriesService.GetAllAsync(userId);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.Equal(2, result.Count);
+            Assert.Contains(result, c => c.Name == "Work");
+            Assert.Contains(result, c => c.Name == "Personal");
+            Assert.DoesNotContain(result, c => c.Name == "Stranger Things");
+        }
+
+        [Fact]
+        public async Task GetAllAsync_ReturnsEmptyList_IfNoCategoriesExist()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+
+            // Action
+            var result = await categoriesService.GetAllAsync(userId);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.Empty(result);
+        }
+        #endregion
+
+        #region GetByIdAsync
+        [Fact]
+        public async Task GetByIdAsync_ThrowsIfCategoryNotFoundOrWrongUser()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var invalidCategoryId = Guid.NewGuid();
+
+            // Assert
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            {
+                // Action
+                await categoriesService.GetByIdAsync(userId, invalidCategoryId);
+            });
+        }
+
+        [Theory]
+        [InlineData("Study")]
+        [InlineData("Home")]
+        public async Task GetByIdAsync_ReturnsCategoryWithValidId(string name)
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+            var category = new CategoryEntity() { Id = categoryId, UserId = userId, Name = name };
+
+            context.Categories.Add(category);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            // Action
+            var result = await categoriesService.GetByIdAsync(userId, categoryId);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.Equal(categoryId, result.Id);
+            Assert.Equal(name, result.Name);
+        }
+        #endregion
+
+        #region UpdateAsync
+        [Fact]
+        public async Task UpdateAsync_ThrowsIfNonExistingId()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var categoryUpdateRequest = new CategoryUpdateRequest()
+            {
+                Id = Guid.NewGuid(),
+                Name = "New Name"
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            {
+                // Action
+                await categoriesService.UpdateAsync(userId, categoryUpdateRequest);
+            });
+        }
+
+        [Fact]
+        public async Task UpdateAsync_ThrowsIfNameIsWithDuplicatedNameForThisUser()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var category1Id = Guid.NewGuid();
+            var category2Id = Guid.NewGuid();
+
+            var category1 = new CategoryEntity() { Id = category1Id, UserId = userId, Name = "Existing Work" };
+            var category2 = new CategoryEntity() { Id = category2Id, UserId = userId, Name = "Existing Home" };
+
+            context.Categories.AddRange(category1, category2);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var categoryUpdateRequest = new CategoryUpdateRequest()
+            {
+                Id = category2Id,
+                Name = "Existing Work"
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
+            {
+                // Action
+                await categoriesService.UpdateAsync(userId, categoryUpdateRequest);
+            });
+        }
+
+        [Theory]
+        [InlineData("Brand New Name")]
+        public async Task UpdateAsync_UpdatesWithValidData(string newName)
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+            var existingEntity = new CategoryEntity() { Id = categoryId, UserId = userId, Name = "Old Name" };
+
+            context.Categories.Add(existingEntity);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var categoryUpdateRequest = new CategoryUpdateRequest()
+            {
+                Id = categoryId,
+                Name = newName
+            };
+
+            // Action
+            var result = await categoriesService.UpdateAsync(userId, categoryUpdateRequest);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.Equal(newName, result.Name);
+            Assert.Equal(categoryId, result.Id);
+
+            var dbCategory = await context.Categories.FindAsync([categoryId], TestContext.Current.CancellationToken);
+            Assert.NotNull(dbCategory);
+            Assert.Equal(newName, dbCategory.Name);
+        }
+        #endregion
+    }
+}
+
+=== FILE: D:\Education\C#NET\ToDo\Tests\ClaimsPrincipalExtensionsTests.cs ===
+using System.Security.Claims;
+using ToDoApp.Extensions;
+
+namespace Tests
+{
+    public sealed class ClaimsPrincipalExtensionsTests
+    {
+        #region GetUserId
+        [Fact]
+        public void GetUserId_ReturnsGuid_WhenClaimIsValid()
+        {
+            // Arrange
+            var expectedUserId = Guid.NewGuid();
+            var claims = new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, expectedUserId.ToString())
+            };
+            var identity = new ClaimsIdentity(claims, "TestAuth");
+            var principal = new ClaimsPrincipal(identity);
+
+            // Action
+            var result = principal.GetUserId();
+
+            // Assert
+            Assert.Equal(expectedUserId, result);
+        }
+
+        [Fact]
+        public void GetUserId_ThrowsUnauthorizedAccessException_WhenClaimIsMissing()
+        {
+            // Arrange
+            var identity = new ClaimsIdentity();
+            var principal = new ClaimsPrincipal(identity);
+
+            // Assert
+            Assert.Throws<UnauthorizedAccessException>(() =>
+            {
+                // Action
+                principal.GetUserId();
+            });
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData("not-a-valid-guid-string")]
+        public void GetUserId_ThrowsUnauthorizedAccessException_WhenClaimIsInvalidGuid(string invalidGuidString)
+        {
+            // Arrange
+            var claims = new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, invalidGuidString)
+            };
+            var identity = new ClaimsIdentity(claims, "TestAuth");
+            var principal = new ClaimsPrincipal(identity);
+
+            // Assert
+            Assert.Throws<UnauthorizedAccessException>(() =>
+            {
+                // Action
+                principal.GetUserId();
+            });
+        }
+        #endregion
+    }
+}
+
+=== FILE: D:\Education\C#NET\ToDo\Tests\PasswordService.cs ===
+using Services;
+
+namespace Tests
+{
+    public sealed class PasswordServiceTests
+    {
+        private readonly PasswordService passwordService;
+
+        public PasswordServiceTests()
+        {
+            passwordService = new PasswordService();
+        }
+
+        #region Generate
+        [Theory]
+        [InlineData("Password123")]
+        [InlineData("MySecureP@ss!")]
+        [InlineData("admin")]
+        public void Generate_ReturnsHashedPassword_WhenPlainPasswordIsProvided(string plainPassword)
+        {
+            // Action
+            var hash = passwordService.Generate(plainPassword);
+
+            // Assert
+            Assert.NotNull(hash);
+            Assert.NotEmpty(hash);
+            Assert.NotEqual(plainPassword, hash);
+        }
+        #endregion
+
+        #region Verify
+        [Fact]
+        public void Verify_ReturnsTrue_WhenPasswordMatchesHash()
+        {
+            // Arrange
+            var password = "CorrectPassword123";
+            var hash = passwordService.Generate(password);
+
+            // Action
+            var result = passwordService.Verify(password, hash);
+
+            // Assert
+            Assert.True(result);
+        }
+
+        [Fact]
+        public void Verify_ReturnsFalse_WhenPasswordDoesNotMatchHash()
+        {
+            // Arrange
+            var password = "CorrectPassword123";
+            var wrongPassword = "WrongPassword123";
+            var hash = passwordService.Generate(password);
+
+            // Action
+            var result = passwordService.Verify(wrongPassword, hash);
+
+            // Assert
+            Assert.False(result);
+        }
+        #endregion
+    }
+}
+
+=== FILE: D:\Education\C#NET\ToDo\Tests\TasksServiceTests.cs ===
+using AutoMapper;
+using Data;
+using Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Moq;
+using ServiceContracts.DTO;
+using Services;
+
+namespace Tests
+{
+    public sealed class TasksServiceTests : IDisposable
+    {
+        private readonly TodoDbContext context;
+        private readonly Mock<ILogger<TasksService>> logger;
+        private readonly IMapper mapper;
+        private readonly TasksService tasksService;
+
+        public TasksServiceTests()
+        {
+            var options = new DbContextOptionsBuilder<TodoDbContext>()
+                .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+                .Options;
+
+            context = new TodoDbContext(options);
+            logger = new Mock<ILogger<TasksService>>();
+
+            var config = new MapperConfiguration(cfg => cfg.AddProfile<AutomapperProfile>(), new LoggerFactory());
+            mapper = config.CreateMapper();
+
+            tasksService = new TasksService(context, mapper, logger.Object);
+        }
+
+        public void Dispose()
+        {
+            context.Database.EnsureDeleted();
+            context.Dispose();
+            GC.SuppressFinalize(this);
+        }
+
+        #region AddAsync
+        [Theory]
+        [InlineData("Task 1", "Description for task 1")]
+        [InlineData("Task 2", "Description for task 2")]
+        public async Task AddAsync_AddsTaskAndReturnsResponseIfValidData(string name, string description)
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+            var taskAddRequest = new TaskAddRequest()
+            {
+                Name = name,
+                Description = description,
+                CategoryId = categoryId
+            };
+
+            // Action
+            var taskResponse = await tasksService.AddAsync(userId, taskAddRequest);
+
+            // Assert
+            Assert.NotNull(taskResponse);
+            Assert.Equal(name, taskResponse.Name);
+            Assert.Equal(description, taskResponse.Description);
+            Assert.Equal(categoryId, taskResponse.CategoryId);
+            Assert.Equal(userId, taskResponse.UserId);
+            Assert.NotEqual(Guid.Empty, taskResponse.Id);
+
+            var dbTask = await context.Tasks.FindAsync([taskResponse.Id], TestContext.Current.CancellationToken);
+            Assert.NotNull(dbTask);
+            Assert.Equal(name, dbTask.Name);
+            Assert.Equal(userId, dbTask.UserId);
+        }
+        #endregion
+
+        #region DeleteAsync
+        [Fact]
+        public async Task DeleteAsync_ThrowsIfInvalidTaskId()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var invalidTaskId = Guid.NewGuid();
+
+            // Assert
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            {
+                // Action
+                await tasksService.DeleteAsync(userId, invalidTaskId);
+            });
+        }
+
+        [Fact]
+        public async Task DeleteAsync_ThrowsIfTaskBelongsToAnotherUser()
+        {
+            // Arrange
+            var authorizedUserId = Guid.NewGuid();
+            var wrongUserId = Guid.NewGuid();
+            var taskId = Guid.NewGuid();
+
+            var task = new TaskEntity()
+            {
+                Id = taskId,
+                UserId = wrongUserId,
+                Name = "Secret Task",
+                Description = "Some description"
+            };
+            context.Tasks.Add(task);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            // Assert
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            {
+                // Action
+                await tasksService.DeleteAsync(authorizedUserId, taskId);
+            });
+        }
+
+        [Fact]
+        public async Task DeleteAsync_DeletesWithValidId()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var taskId = Guid.NewGuid();
+            var task = new TaskEntity()
+            {
+                Id = taskId,
+                UserId = userId,
+                Name = "To Delete",
+                Description = "Some description"
+            };
+
+            context.Tasks.Add(task);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            // Action
+            await tasksService.DeleteAsync(userId, taskId);
+
+            // Assert
+            var dbTask = await context.Tasks.FindAsync([taskId, TestContext.Current.CancellationToken], TestContext.Current.CancellationToken);
+            Assert.Null(dbTask);
+        }
+        #endregion
+
+        #region GetByIdAsync
+        [Theory]
+        [InlineData("Fix bugs", "Fix all critical issues")]
+        public async Task GetByIdAsync_ReturnsTaskWithValidId(string name, string description)
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+            var taskId = Guid.NewGuid();
+
+            var category = new CategoryEntity { Id = categoryId, UserId = userId, Name = "Tech Category" };
+            var task = new TaskEntity()
+            {
+                Id = taskId,
+                UserId = userId,
+                CategoryId = categoryId,
+                Category = category,
+                Name = name,
+                Description = description
+            };
+
+            context.Categories.Add(category);
+            context.Tasks.Add(task);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            // Action
+            var result = await tasksService.GetByIdAsync(userId, taskId);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.Equal(taskId, result.Id);
+            Assert.Equal(name, result.Name);
+            Assert.Equal(description, result.Description);
+        }
+
+        [Fact]
+        public async Task GetByIdAsync_ThrowsIfTaskNotFoundOrWrongUser()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var invalidTaskId = Guid.NewGuid();
+
+            // Assert
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            {
+                // Action
+                await tasksService.GetByIdAsync(userId, invalidTaskId);
+            });
+        }
+        #endregion
+
+        #region GetPaginatedAsync
+        [Fact]
+        public async Task GetPaginatedAsync_ReturnsAllTasksForUser_IfNoFiltersProvided()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var anotherUserId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+
+            var category = new CategoryEntity { Id = categoryId, UserId = userId, Name = "General" };
+            context.Categories.Add(category);
+
+            var tasks = new List<TaskEntity>()
+            {
+                new() { Id = Guid.NewGuid(), UserId = userId, CategoryId = categoryId, Category = category, Name = "Task 1", Description = "Desc 1" },
+                new() { Id = Guid.NewGuid(), UserId = userId, CategoryId = categoryId, Category = category, Name = "Task 2", Description = "Desc 2" },
+                new() { Id = Guid.NewGuid(), UserId = anotherUserId, CategoryId = categoryId, Category = category, Name = "Task 3", Description = "Desc 3" }
+            };
+
+            context.Tasks.AddRange(tasks);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var parameters = new TasksPaginationParameters();
+
+            // Action
+            var result = await tasksService.GetPaginatedAsync(userId, parameters);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.Equal(2, result.TotalCount);
+            Assert.Equal(2, result.Items.Count());
+        }
+
+        [Theory]
+        [InlineData("Learn", 2)]
+        [InlineData("EF Core", 1)]
+        [InlineData("NonExisting", 0)]
+        public async Task GetPaginatedAsync_FiltersByName_IfSearchNameIsProvided(string searchName, int expectedCount)
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+
+            var category = new CategoryEntity { Id = categoryId, UserId = userId, Name = "Education" };
+            context.Categories.Add(category);
+
+            var tasks = new List<TaskEntity>()
+            {
+                new() { Id = Guid.NewGuid(), UserId = userId, CategoryId = categoryId, Category = category, Name = "Learn C#", Description = "Desc" },
+                new() { Id = Guid.NewGuid(), UserId = userId, CategoryId = categoryId, Category = category, Name = "Learn EF Core", Description = "Desc" },
+                new() { Id = Guid.NewGuid(), UserId = userId, CategoryId = categoryId, Category = category, Name = "Buy Milk", Description = "Desc" }
+            };
+
+            context.Tasks.AddRange(tasks);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var parameters = new TasksPaginationParameters { SearchName = searchName };
+
+            // Action
+            var result = await tasksService.GetPaginatedAsync(userId, parameters);
+
+            // Assert
+            Assert.Equal(expectedCount, result.TotalCount);
+        }
+
+        [Fact]
+        public async Task GetPaginatedAsync_FiltersByCategory_IfCategoryIdIsProvided()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var targetCategoryId = Guid.NewGuid();
+            var otherCategoryId = Guid.NewGuid();
+
+            var targetCategory = new CategoryEntity { Id = targetCategoryId, UserId = userId, Name = "Target" };
+            var otherCategory = new CategoryEntity { Id = otherCategoryId, UserId = userId, Name = "Other" };
+            context.Categories.AddRange(targetCategory, otherCategory);
+
+            var tasks = new List<TaskEntity>()
+            {
+                new() { Id = Guid.NewGuid(), UserId = userId, CategoryId = targetCategoryId, Category = targetCategory, Name = "Task 1", Description = "Desc" },
+                new() { Id = Guid.NewGuid(), UserId = userId, CategoryId = targetCategoryId, Category = targetCategory, Name = "Task 2", Description = "Desc" },
+                new() { Id = Guid.NewGuid(), UserId = userId, CategoryId = otherCategoryId, Category = otherCategory, Name = "Task 3", Description = "Desc" }
+            };
+
+            context.Tasks.AddRange(tasks);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var parameters = new TasksPaginationParameters { CategoryId = targetCategoryId };
+
+            // Action
+            var result = await tasksService.GetPaginatedAsync(userId, parameters);
+
+            // Assert
+            Assert.Equal(2, result.TotalCount);
+            Assert.All(result.Items, t => Assert.Equal(targetCategoryId, t.CategoryId));
+        }
+
+        [Fact]
+        public async Task GetPaginatedAsync_AppliesPagination_ReturnsCorrectPageAndSize()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+
+            var category = new CategoryEntity { Id = categoryId, UserId = userId, Name = "Pagination Category" };
+            context.Categories.Add(category);
+
+            var tasks = Enumerable.Range(1, 15).Select(i => new TaskEntity
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                CategoryId = categoryId,
+                Category = category,
+                Name = $"Task {i}",
+                Description = "Desc"
+            }).ToList();
+
+            context.Tasks.AddRange(tasks);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var parameters = new TasksPaginationParameters { PageNumber = 2, PageSize = 5 };
+
+            // Action
+            var result = await tasksService.GetPaginatedAsync(userId, parameters);
+
+            // Assert
+            Assert.Equal(15, result.TotalCount);
+            Assert.Equal(5, result.Items.Count());
+            Assert.Equal(2, result.PageNumber);
+            Assert.Equal(3, result.TotalPages);
+        }
+        #endregion
+
+        #region UpdateAsync
+        [Fact]
+        public async Task UpdateAsync_ThrowsIfNonExistingId()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var taskUpdateRequest = new TaskUpdateRequest()
+            {
+                Id = Guid.NewGuid(),
+                Name = "Updated Name",
+                Description = "Updated Description"
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            {
+                // Action
+                await tasksService.UpdateAsync(userId, taskUpdateRequest);
+            });
+        }
+
+        [Fact]
+        public async Task UpdateAsync_ThrowsIfTaskBelongsToAnotherUser()
+        {
+            // Arrange
+            var authorizedUserId = Guid.NewGuid();
+            var wrongUserId = Guid.NewGuid();
+            var taskId = Guid.NewGuid();
+
+            var existingTask = new TaskEntity() { Id = taskId, UserId = wrongUserId, Name = "Old Name", Description = "Old Desc" };
+            context.Tasks.Add(existingTask);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var taskUpdateRequest = new TaskUpdateRequest()
+            {
+                Id = taskId,
+                Name = "Updated Name",
+                Description = "Updated Description"
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            {
+                // Action
+                await tasksService.UpdateAsync(authorizedUserId, taskUpdateRequest);
+            });
+        }
+
+        [Theory]
+        [InlineData("Brand New Task Name", "Brand New Description", true)]
+        public async Task UpdateAsync_UpdatesWithValidData(string newName, string newDescription, bool isCompleted)
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var taskId = Guid.NewGuid();
+            var categoryId = Guid.NewGuid();
+            var existingEntity = new TaskEntity() { Id = taskId, UserId = userId, Name = "Old Name", Description = "Old Desc", IsCompleted = false };
+
+            context.Tasks.Add(existingEntity);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var taskUpdateRequest = new TaskUpdateRequest()
+            {
+                Id = taskId,
+                Name = newName,
+                Description = newDescription,
+                IsCompleted = isCompleted,
+                CategoryId = categoryId
+            };
+
+            // Action
+            var result = await tasksService.UpdateAsync(userId, taskUpdateRequest);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.Equal(newName, result.Name);
+            Assert.Equal(newDescription, result.Description);
+            Assert.Equal(isCompleted, result.IsCompleted);
+            Assert.Equal(categoryId, result.CategoryId);
+            Assert.Equal(taskId, result.Id);
+
+            var dbTask = await context.Tasks.FindAsync([taskId], TestContext.Current.CancellationToken);
+            Assert.NotNull(dbTask);
+            Assert.Equal(newName, dbTask.Name);
+            Assert.Equal(newDescription, dbTask.Description);
+            Assert.Equal(isCompleted, dbTask.IsCompleted);
+        }
+        #endregion
+    }
+}
+
+=== FILE: D:\Education\C#NET\ToDo\Tests\TokensServiceTests.cs ===
+using Microsoft.Extensions.Options;
+using Moq;
+using Services;
+using Services.Options;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+
+namespace Tests
+{
+    public sealed class TokensServiceTests
+    {
+        private readonly Mock<IOptions<JwtOptions>> jwtOptionsMock;
+
+        public TokensServiceTests()
+        {
+            jwtOptionsMock = new Mock<IOptions<JwtOptions>>();
+        }
+
+        #region GenerateToken
+        [Fact]
+        public void GenerateToken_ReturnsValidTokenWithCorrectClaims_WhenUserIdIsProvided()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var jwtOptions = new JwtOptions
+            {
+                SecretKey = "super_secret_key_that_is_long_enough_for_hmac_sha256",
+                ExpiresInHours = 2
+            };
+            jwtOptionsMock.Setup(o => o.Value).Returns(jwtOptions);
+
+            var tokensService = new TokensService(jwtOptionsMock.Object);
+
+            // Action
+            var tokenString = tokensService.GenerateToken(userId);
+
+            // Assert
+            Assert.NotNull(tokenString);
+            Assert.NotEmpty(tokenString);
+
+            var handler = new JwtSecurityTokenHandler();
+            var jwtToken = handler.ReadJwtToken(tokenString);
+
+            var nameIdentifierClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
+            Assert.NotNull(nameIdentifierClaim);
+            Assert.Equal(userId.ToString(), nameIdentifierClaim.Value);
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(12)]
+        [InlineData(24)]
+        public void GenerateToken_SetsCorrectExpirationTime_BasedOnJwtOptions(double expiresInHours)
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var jwtOptions = new JwtOptions
+            {
+                SecretKey = "super_secret_key_that_is_long_enough_for_hmac_sha256",
+                ExpiresInHours = expiresInHours
+            };
+            jwtOptionsMock.Setup(o => o.Value).Returns(jwtOptions);
+
+            var tokensService = new TokensService(jwtOptionsMock.Object);
+
+            // Action
+            var tokenString = tokensService.GenerateToken(userId);
+
+            // Assert
+            var handler = new JwtSecurityTokenHandler();
+            var jwtToken = handler.ReadJwtToken(tokenString);
+
+            var expectedExpiration = DateTime.UtcNow.AddHours(expiresInHours);
+            Assert.True(jwtToken.ValidTo > DateTime.UtcNow);
+            Assert.True((expectedExpiration - jwtToken.ValidTo).Duration() < TimeSpan.FromMinutes(1));
+        }
+        #endregion
+    }
+}
+
+=== FILE: D:\Education\C#NET\ToDo\Tests\UsersServiceTests.cs ===
+using AutoMapper;
+using Data;
+using Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Moq;
+using ServiceContracts;
+using ServiceContracts.DTO;
+using Services;
+
+namespace Tests
+{
+    public sealed class UsersServiceTests : IDisposable
+    {
+        private readonly TodoDbContext context;
+        private readonly Mock<ILogger<UsersService>> logger;
+        private readonly Mock<IPasswordService> passwordService;
+        private readonly Mock<ITokensService> tokensService;
+        private readonly IMapper mapper;
+        private readonly UsersService usersService;
+
+        public UsersServiceTests()
+        {
+            var options = new DbContextOptionsBuilder<TodoDbContext>()
+                .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+                .Options;
+
+            context = new TodoDbContext(options);
+            logger = new Mock<ILogger<UsersService>>();
+            passwordService = new Mock<IPasswordService>();
+            tokensService = new Mock<ITokensService>();
+
+            var config = new MapperConfiguration(cfg => cfg.AddProfile<AutomapperProfile>(), new LoggerFactory());
+            mapper = config.CreateMapper();
+
+            usersService = new UsersService(
+                context,
+                mapper,
+                logger.Object,
+                passwordService.Object,
+                tokensService.Object
+            );
+        }
+
+        public void Dispose()
+        {
+            context.Database.EnsureDeleted();
+            context.Dispose();
+            GC.SuppressFinalize(this);
+        }
+
+        #region RegisterAsync
+        [Fact]
+        public async Task RegisterAsync_ThrowsIfEmailAlreadyExists()
+        {
+            // Arrange
+            var existingEmail = "user@example.com";
+            var existingUser = new UserEntity()
+            {
+                Id = Guid.NewGuid(),
+                Email = existingEmail,
+                PasswordHash = "some_hashed_password"
+            };
+            context.Users.Add(existingUser);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var userAddRequest = new UserAddRequest()
+            {
+                Email = existingEmail,
+                Password = "Password123"
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
+            {
+                // Action
+                await usersService.RegisterAsync(userAddRequest);
+            });
+        }
+
+        [Theory]
+        [InlineData("newuser@example.com", "SecurePass123")]
+        public async Task RegisterAsync_RegistersUserIfValidData(string email, string password)
+        {
+            // Arrange
+            var expectedHash = "generated_hash_value";
+            passwordService.Setup(p => p.Generate(password)).Returns(expectedHash);
+
+            var userAddRequest = new UserAddRequest()
+            {
+                Email = email,
+                Password = password
+            };
+
+            // Action
+            await usersService.RegisterAsync(userAddRequest);
+
+            // Assert
+            var dbUser = await context.Users.FirstOrDefaultAsync(u => u.Email == email, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.NotNull(dbUser);
+            Assert.Equal(expectedHash, dbUser.PasswordHash);
+            Assert.NotEqual(Guid.Empty, dbUser.Id);
+
+            passwordService.Verify(p => p.Generate(password), Times.Once);
+        }
+        #endregion
+
+        #region LoginAsync
+        [Fact]
+        public async Task LoginAsync_ThrowsIfUserDoesNotExist()
+        {
+            // Arrange
+            var userLoginRequest = new UserLoginRequest()
+            {
+                Email = "nonexistent@example.com",
+                Password = "SomePassword"
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            {
+                // Action
+                await usersService.LoginAsync(userLoginRequest);
+            });
+        }
+
+        [Fact]
+        public async Task LoginAsync_ThrowsIfPasswordIsInvalid()
+        {
+            // Arrange
+            var email = "user@example.com";
+            var correctHash = "correct_hash";
+            var wrongPassword = "WrongPassword";
+
+            var user = new UserEntity() { Id = Guid.NewGuid(), Email = email, PasswordHash = correctHash };
+            context.Users.Add(user);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            passwordService.Setup(p => p.Verify(wrongPassword, correctHash)).Returns(false);
+
+            var userLoginRequest = new UserLoginRequest()
+            {
+                Email = email,
+                Password = wrongPassword
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            {
+                // Action
+                await usersService.LoginAsync(userLoginRequest);
+            });
+
+            passwordService.Verify(p => p.Verify(wrongPassword, correctHash), Times.Once);
+        }
+
+        [Theory]
+        [InlineData("validuser@example.com", "CorrectPassword123")]
+        public async Task LoginAsync_ReturnsTokenIfCredentialsAreValid(string email, string password)
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var passwordHash = "valid_hash";
+            var expectedToken = "mocked_jwt_token_string";
+
+            var user = new UserEntity() { Id = userId, Email = email, PasswordHash = passwordHash };
+            context.Users.Add(user);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            passwordService.Setup(p => p.Verify(password, passwordHash)).Returns(true);
+            tokensService.Setup(t => t.GenerateToken(userId)).Returns(expectedToken);
+
+            var userLoginRequest = new UserLoginRequest()
+            {
+                Email = email,
+                Password = password
+            };
+
+            // Action
+            var token = await usersService.LoginAsync(userLoginRequest);
+
+            // Assert
+            Assert.NotNull(token);
+            Assert.Equal(expectedToken, token);
+
+            passwordService.Verify(p => p.Verify(password, passwordHash), Times.Once);
+            tokensService.Verify(t => t.GenerateToken(userId), Times.Once);
+        }
+        #endregion
+
+        #region UpdatePasswordAsync
+        [Fact]
+        public async Task UpdatePasswordAsync_ThrowsIfCurrentAndNewPasswordsAreSame()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var samePassword = "SamePassword123";
+
+            var userUpdateRequest = new UserUpdateRequest()
+            {
+                CurrentPassword = samePassword,
+                NewPassword = samePassword
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
+            {
+                // Action
+                await usersService.UpdatePasswordAsync(userId, userUpdateRequest);
+            });
+        }
+
+        [Fact]
+        public async Task UpdatePasswordAsync_ThrowsIfUserDoesNotExist()
+        {
+            // Arrange
+            var invalidUserId = Guid.NewGuid();
+            var userUpdateRequest = new UserUpdateRequest()
+            {
+                CurrentPassword = "OldPassword123",
+                NewPassword = "NewPassword123"
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+            {
+                // Action
+                await usersService.UpdatePasswordAsync(invalidUserId, userUpdateRequest);
+            });
+        }
+
+        [Fact]
+        public async Task UpdatePasswordAsync_ThrowsIfCurrentPasswordIsInvalid()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var storedHash = "stored_hash";
+            var wrongCurrentPassword = "WrongCurrentPassword";
+
+            var user = new UserEntity() { Id = userId, Email = "user@example.com", PasswordHash = storedHash };
+            context.Users.Add(user);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            passwordService.Setup(p => p.Verify(wrongCurrentPassword, storedHash)).Returns(false);
+
+            var userUpdateRequest = new UserUpdateRequest()
+            {
+                CurrentPassword = wrongCurrentPassword,
+                NewPassword = "BrandNewPassword123"
+            };
+
+            // Assert
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            {
+                // Action
+                await usersService.UpdatePasswordAsync(userId, userUpdateRequest);
+            });
+
+            passwordService.Verify(p => p.Verify(wrongCurrentPassword, storedHash), Times.Once);
+        }
+
+        [Theory]
+        [InlineData("OldPass123", "NewPass123", "new_generated_hash")]
+        public async Task UpdatePasswordAsync_UpdatesPasswordIfValidData(string currentPassword, string newPassword, string newHash)
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var oldHash = "old_stored_hash";
+
+            var user = new UserEntity() { Id = userId, Email = "user@example.com", PasswordHash = oldHash };
+            context.Users.Add(user);
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            passwordService.Setup(p => p.Verify(currentPassword, oldHash)).Returns(true);
+            passwordService.Setup(p => p.Generate(newPassword)).Returns(newHash);
+
+            var userUpdateRequest = new UserUpdateRequest()
+            {
+                CurrentPassword = currentPassword,
+                NewPassword = newPassword
+            };
+
+            // Action
+            await usersService.UpdatePasswordAsync(userId, userUpdateRequest);
+
+            // Assert
+            var dbUser = await context.Users.FindAsync([userId], TestContext.Current.CancellationToken);
+            Assert.NotNull(dbUser);
+            Assert.Equal(newHash, dbUser.PasswordHash);
+
+            passwordService.Verify(p => p.Verify(currentPassword, oldHash), Times.Once);
+            passwordService.Verify(p => p.Generate(newPassword), Times.Once);
+        }
+        #endregion
+    }
+}
+
 === FILE: D:\Education\C#NET\ToDo\ToDoApp\Controllers\CategoriesController.cs ===
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

@@ -1,18 +1,14 @@
-﻿using Data.Entities;
+﻿using Data;
+using Data.Entities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using ServiceContracts;
 
-namespace Data
+namespace Services
 {
     public static class DataSeeder
     {
-        public static async Task SeedAsync(IServiceProvider serviceProvider)
+        public static async Task SeedAsync(TodoDbContext context, IPasswordService passwordService)
         {
-            using var scope = serviceProvider.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
-            var passwordService = scope.ServiceProvider.GetRequiredService<IPasswordService>();
-
             await context.Database.MigrateAsync();
 
             if (await context.Users.AnyAsync())

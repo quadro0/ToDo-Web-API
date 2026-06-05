@@ -89,7 +89,10 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    await DataSeeder.SeedAsync(scope.ServiceProvider);
+    var context = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
+    var passwordService = scope.ServiceProvider.GetRequiredService<IPasswordService>();
+
+    await DataSeeder.SeedAsync(context, passwordService);
 }
 
 app.UseExceptionHandler(opt => { });
